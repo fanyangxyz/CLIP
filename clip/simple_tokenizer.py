@@ -63,14 +63,18 @@ class SimpleTokenizer(object):
     def __init__(self, bpe_path: str = default_bpe()):
         self.byte_encoder = bytes_to_unicode()
         self.byte_decoder = {v: k for k, v in self.byte_encoder.items()}
+        # for k, v in self.byte_encoder.items():
+        #     print('type k:', type(k), k, 'type v:', type(v), v)
         merges = gzip.open(bpe_path).read().decode("utf-8").split('\n')
         merges = merges[1:49152-256-2+1]
         merges = [tuple(merge.split()) for merge in merges]
+        # print('merges:', merges[:10], type(merges[0]), len(merges))
         vocab = list(bytes_to_unicode().values())
         vocab = vocab + [v+'</w>' for v in vocab]
         for merge in merges:
             vocab.append(''.join(merge))
         vocab.extend(['<|startoftext|>', '<|endoftext|>'])
+        # print('vocab:', vocab[:10], type(vocab[0]), len(vocab))
         self.encoder = dict(zip(vocab, range(len(vocab))))
         self.decoder = {v: k for k, v in self.encoder.items()}
         self.bpe_ranks = dict(zip(merges, range(len(merges))))
@@ -78,16 +82,20 @@ class SimpleTokenizer(object):
         self.pat = re.compile(r"""<\|startoftext\|>|<\|endoftext\|>|'s|'t|'re|'ve|'m|'ll|'d|[\p{L}]+|[\p{N}]|[^\s\p{L}\p{N}]+""", re.IGNORECASE)
 
     def bpe(self, token):
+        # print('---------- bpe ----------')
         if token in self.cache:
             return self.cache[token]
         word = tuple(token[:-1]) + ( token[-1] + '</w>',)
+        # print('word:', word)
         pairs = get_pairs(word)
+        # print('pairs:', pairs)
 
         if not pairs:
             return token+'</w>'
 
         while True:
             bigram = min(pairs, key = lambda pair: self.bpe_ranks.get(pair, float('inf')))
+            # print('-- bigram --:', bigram)
             if bigram not in self.bpe_ranks:
                 break
             first, second = bigram
@@ -109,6 +117,7 @@ class SimpleTokenizer(object):
                     new_word.append(word[i])
                     i += 1
             new_word = tuple(new_word)
+            # print('new word:', new_word)
             word = new_word
             if len(word) == 1:
                 break
@@ -119,14 +128,37 @@ class SimpleTokenizer(object):
         return word
 
     def encode(self, text):
+        # print('---------- encoding ----------')
         bpe_tokens = []
         text = whitespace_clean(basic_clean(text)).lower()
+        # print('cleaned:', text)
         for token in re.findall(self.pat, text):
             token = ''.join(self.byte_encoder[b] for b in token.encode('utf-8'))
+            # print('token:', token, 'bpe token:', self.bpe(token))
             bpe_tokens.extend(self.encoder[bpe_token] for bpe_token in self.bpe(token).split(' '))
+            # print(bpe_tokens)
         return bpe_tokens
 
     def decode(self, tokens):
+        # print('---------- decoding ----------')
         text = ''.join([self.decoder[token] for token in tokens])
+        # print('text:', text)
+        byte_array = bytearray([self.byte_decoder[c] for c in text])
+        # print('byte array:', byte_array)
         text = bytearray([self.byte_decoder[c] for c in text]).decode('utf-8', errors="replace").replace('</w>', ' ')
         return text
+
+
+def main():
+    tokenizer = SimpleTokenizer()
+    print('tokenizer created.')
+    s = 'Zhijian'
+    print('example:', s)
+    encoded = tokenizer.encode(s)
+    print('encoded:', encoded)
+    decoded = tokenizer.decode(encoded)
+    print('decoded:', decoded)
+
+
+if __name__ == '__main__':
+    main()
